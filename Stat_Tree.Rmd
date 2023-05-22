@@ -1,0 +1,252 @@
+---
+title: "Genom&Bio"
+author: "John Denver"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Library
+
+```{r}
+library(MASS)
+library(ggplot2)
+library(tidyverse)
+library(dplyr)
+library(readr)
+
+
+library(ape)
+library(seqinr)
+library(phangorn)
+
+library(foreach)
+library(doParallel)
+```
+
+
+```{r}
+gene_counts <- data.frame(
+  MTOR = c(7, 2, 1, 2, 2, 2, 3, 2, 2, 3, 3),
+  Raptor = c(1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+  PRAS40 = c(0, 1, 0, 1, 0, 0, 1, 0, 0, 0, 2),
+  MLST8 = c(1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 1),
+  Telomere_maintenance2 = c(1, 1, 0, 1, 0, 1, 1, 1, 1, 1, 1),
+  Tel_interacting_protein1 = c(2, 1, 1, 1, 1, 1, 1, 1, 1, 3, 1),
+  Mapkap1 = c(1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 2),
+  Rictor = c(4, 1, 0, 2, 1, 1, 1, 1, 1, 2, 2),
+  Deptor = c(2, 1, 0, 2, 0, 2, 1, 1, 1, 1, 5)
+)
+
+gene_counts[] <- lapply(gene_counts, as.numeric)
+
+
+poisson_model <- glm(MTOR ~ ., data = gene_counts, family = poisson(), control = glm.control(maxit = 1000))
+nb_model <- glm.nb(MTOR ~ ., data = gene_counts, control = glm.control(maxit = 1000))
+
+poisson_pvalues <- summary(poisson_model)$coefficients[, "Pr(>|z|)"]
+
+nb_pvalues <- summary(nb_model)$coefficients[, "Pr(>|z|)"]
+
+```
+
+
+
+
+```{r}
+nb_pvalues
+```
+
+
+```{r}
+species_dict <- list(
+    'hsa' = 'Homo sapiens',
+    'mmu' = 'Mus musculus',
+    'dme' = 'Drosophila melanogaster',
+    'cel' = 'Caenorhabditis elegans',
+    'dre' = 'Danio rerio',
+    'nve' = 'Nematostella vectensis',
+    'aqu' = 'Amphimedon queenslandica',
+    'spu' = 'Strongylocentrotus purpuratus',
+    'hmg' = 'Hydra vulgaris',
+    'gga' = 'Gallus gallus',
+    'xla' = 'Xenopus laevis',
+    'ssc' = 'Sus scrofa domesticus',
+    'bta' = 'Bos taurus',
+    'lav' = 'Loxodonta africana',
+    'rno' = 'Rattus norvegicus',
+    'oas' = 'Ovis aries',
+    'ocu' = 'Oryctolagus cuniculus',
+    'ecb' = 'Equus caballus',
+    'chx' = 'Capra hircus',
+    'fca' = 'Felis catus',
+    'cfa' = 'Canis lupus familiaris',
+    'cav' = 'Cavia porcellus',
+    'cjc' = 'Callithrix jacchus',
+    'mcc' = 'Macaca mulatta',
+    'ptr' = 'Pan troglodytes',
+    'pon' = 'Pongo pygmaeus',
+    'ggo' = 'Gorilla gorilla',
+    'bbub' = 'Bubalus bubalis',
+    'maua' = 'Mesocricetus auratus',
+    'nle' = 'Nomascus leucogenys',
+    'etf' = 'Echinops telfairi',
+    'dnm' = 'Dasypus novemcinctus',
+    'pcla' = 'Procavia capensis',
+    'pwc' = 'Phascolarctos cinereus',
+    'shr' = 'Sarcophilus harrisii',
+    'ccat' = 'Ceratitis capitata',
+    'hcg' = 'Hemidactylus capensis',
+    'tca' = 'Tribolium castaneum',
+    'obi' = 'Octopus vulgaris',
+    'cgi' = 'Crassostrea gigas',
+    'ola' = 'Oryzias latipes',
+    'mmer' = 'Mercenaria mercenaria',
+    'svg' = 'Sturnus vulgaris',
+    'ccar' = 'Cyprinus carpio',
+    'pma' = 'Parus major',
+    'pmoa' = 'Passer motanus',
+    'tgu' = 'Taeniopygia guttata',
+    'cbrc' = 'Corvus brachyrhynchos',
+    'mdo' = 'Monodelphis domestica',
+    'acs' = 'Anolis carolinensis',
+    'lcm' = 'Latimeria chalumnae',
+    'gat' = 'Gasterosteus aculeatus',
+    'omy' = 'Oncorhynchus mykiss',
+    'xma' = 'Xiphophorus maculatus',
+    'amex' = 'Astyanax mexicanus',
+    'hro' = 'Helobdella robusta',
+    'bta' = 'Bos Taurus'
+  
+)
+
+```
+
+```{r}
+
+
+file_paths <- list.files(path = '/Users/jaydee/Desktop/Genomics and Bioinformatics/Final Project - DNA REPAIR files/aligned_txts', pattern = "*.txt", full.names = TRUE)
+
+
+for (file_path in file_paths) {
+  lines <- readLines(file_path)
+  new_lines <- c()
+
+  for (line in lines) {
+    if (startsWith(line, '>')) {
+      species_code <- substr(line, 2, 4)
+      if (species_code %in% names(species_dict)) {
+        new_line <- paste0('>', species_dict[[species_code]])
+        new_lines <- c(new_lines, new_line)
+      }
+    } else {
+      new_lines <- c(new_lines, line)
+    }
+  }
+
+  writeLines(new_lines, file_path)  # Overwrite the existing file
+}
+```
+
+```{r}
+
+dir_path <- "/Users/jaydee/Desktop/Genomics and Bioinformatics/Final Project - DNA REPAIR files/aligned_txts"
+
+
+file_list <- list.files(dir_path)
+
+
+for (file in file_list){
+  file_content <- readLines(paste0(dir_path, "/", file))
+  new_content <- c()
+  for (line in file_content){
+    if(line %in% species_dict){
+      new_content <- c(new_content, paste0(">", line))
+    } else {
+      new_content <- c(new_content, line)
+    }
+  }
+  writeLines(new_content, paste0(dir_path, "/", file))
+}
+
+
+```
+
+```{r}
+genes <- c("K20403", "K16184", "K11137", "K08267", "K08266", "K07204", "K07203", "K020403", "K020402")
+gene_names <- c("TTI1", "PRAS40", "Tel2", "Mapkap1", "MLST8", "Raptor", "MTOR", "Rictor", "Deptor")
+
+for (i in seq_along(genes)) {
+  gene <- genes[i]
+  gene_name <- gene_names[i]
+  
+  # Read data
+  file_path <- paste0('/Users/jaydee/Desktop/Genomics and Bioinformatics/Final Project - DNA REPAIR files/aligned_txts/', gene, '_aligned.txt')
+  
+  # Try reading the data and handling errors
+  tryCatch({
+    aa_data <- read.aa(file = file_path, format = 'fasta')
+    
+    # Check sequence lengths
+    seq_lengths <- sapply(aa_data$seq, nchar)
+    
+    if (length(unique(seq_lengths)) > 1) {
+      cat("Error: Sequences in gene", gene, "have different lengths.\n")
+      next
+    }
+    
+    # Calculate distances
+    phyDat_data <- phyDat(aa_data, type = "AA")
+    
+    # Create neighbor-joining tree
+    nj_tree <- NJ(dist.ml(phyDat_data))
+    
+    # Increase space between branches
+    plot(root(nj_tree, 'Mus musculus'), main = gene_name, cex = 0.7, edge.width = 2)
+    
+    # Save file in high-res
+    file_name <- paste0(gene_name, '_NJ.tiff')
+    tiff(file = file_name, units = 'in', width = 10, height = 10, res = 300)
+    plot(root(nj_tree, 'Mus musculus'), main = gene_name, cex = 0.7, edge.width = 2)
+    dev.off()
+    
+  }, error = function(e) {
+    cat("Error: An error occurred while processing gene", gene, "(", e$message, ")\n")
+  })
+}
+
+
+
+
+```
+
+
+```{r}
+
+set.seed(1) 
+
+# Bootstrapping 100 trees
+K07203bs.clu <- bootstrap.pml(K07203fit, bs=100, optNni=TRUE, optInv=TRUE, optBf=TRUE, optQ=TRUE, getRooted=TRUE)
+print(K07203bs.clu)
+
+cl <- makeCluster(detectCores())
+registerDoParallel(cl)
+
+
+# Parallelize bootstrap
+#bootstrap_samples <- foreach(i=1:100, .packages=c("ape", "phangorn")) %dopar% {
+  #library(ape)
+  #library(phangorn)
+  #bootstrap.pml(K07203fit, bs=1, optNni=TRUE, optInv=TRUE, optBf=TRUE, optQ=TRUE, getRooted=TRUE)
+}
+
+# Stop cluster
+#stopCluster(cl)
+
+
+```
+
+
